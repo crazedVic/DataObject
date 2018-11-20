@@ -90,6 +90,15 @@ class DataObject
         return $queries[$query];
     }
 
+    protected static function _getId()
+    {
+        error_log("getting id");
+        $stmt = self::_getPdo()->query("SELECT LAST_INSERT_ID()");
+        $lastId = $stmt->fetchColumn();
+        error_log($lastId);
+        return $lastId;
+    }
+
     /**
      * execute query and return result as DataObject
      * must be use for SELECT queries only
@@ -194,7 +203,7 @@ class DataObject
         return count($result) > 0 ? end($result) : null;
     }
 
-    private static function _createWhereFromParams($params,&$values)
+    private static function _createWhereFromParams($params, &$values)
     {
         $where = [];
         $p = [];
@@ -223,7 +232,7 @@ class DataObject
      */
     public static function find($params, $order = null, $limit = null)
     {
-        return self::where(self::_createWhereFromParams($params,$p), $p, $order, $limit);
+        return self::where(self::_createWhereFromParams($params, $p), $p, $order, $limit);
     }
 
     /**
@@ -251,7 +260,7 @@ class DataObject
      * @param $order
      * @return DataObject|null
      */
-    public function findLast($params, $order=null)
+    public function findLast($params, $order = null)
     {
         $result = self::find($params, $order);
         return count($result) > 0 ? end($result) : null;
@@ -336,7 +345,7 @@ class DataObject
     public static function count($where = null, $params = null)
     {
         if (is_array($where)) {
-            $where = self::_createWhereFromParams($where,$params);
+            $where = self::_createWhereFromParams($where, $params);
         }
         if (null !== $where) {
             $where = ' WHERE ' . $where;
@@ -344,7 +353,7 @@ class DataObject
             $where = '';
         }
 
-        return (int)self::query(
+        return (int) self::query(
             'SELECT count(*) as nb FROM `' . self::getTable() . '`' . $where,
             $params
         )[0]->nb;
@@ -369,7 +378,7 @@ class DataObject
      * return an uniq id
      * @return bool|string
      */
-    public static function defineId($length=8)
+    public static function defineId($length = 8)
     {
         do {
             $id = substr(str_shuffle(str_repeat($x = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', ceil($length / strlen($x)))), 1, $length);
@@ -486,18 +495,28 @@ class DataObject
          * create and execute query
          */
         if (!$this->isInDatabase()) {
+
+            $class = get_called_class();
             $keys = array_keys($vars);
-            $keys[] = 'id';
+
+            if (!isset($class::$_autoId)) {
+                $keys[] = 'id';
+                $this->id = self::defineId();
+                $vars[] = $this->id;
+            }
             if ($transaction) {
                 self::beginTransaction();
             }
-            $this->id = self::defineId();
-            $vars[] = $this->id;
+
             $query = 'insert into `' . self::getTable() . '`(`' . implode('`, `', $keys) . '`) values (?' . str_repeat(', ?', sizeof($vars) - 1) . ')';
             $statement = self::_prepare($query);
             $result = $statement->execute(array_values($vars));
             if ($transaction) {
                 self::commit();
+            }
+            //get database generated if option enabled
+            if (isset($class::$_autoId)) {
+                $this->id = self::_getId();
             }
             if (!$result) {
                 throw new \Exception($statement->errorInfo()[2]);
@@ -561,7 +580,6 @@ class DataObject
         $result = $stmt->execute($params);
         return $result;
     }
-
 
     /**
      * return true if table exists
@@ -641,7 +659,6 @@ class DataObject
         }
         return $this;
     }
-
 
     public function fromJson($json)
     {
