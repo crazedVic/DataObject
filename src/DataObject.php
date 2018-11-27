@@ -459,9 +459,9 @@ class DataObject
         $array = [join('', array_slice(explode('\\', $class), -1)), join('', array_slice(explode('\\', $thisClass), -1))];
         sort($array);
         if ($namespace) {
-            return $nsp . '\\' . implode('_', $array);
+            return $nsp . '\\' . implode('', $array);
         } else {
-            return implode('_', $array);
+            return implode('', $array);
         }
     }
 
