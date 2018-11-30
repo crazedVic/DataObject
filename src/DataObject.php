@@ -182,7 +182,7 @@ class DataObject
      */
     public static function whereFirst($where, $params = [], $order = null)
     {
-        $result = self::where($where, $params, $order, '0,1');
+        $result = self::where($where, $params, $order, 1, 0);
         return isset($result[0]) ? $result[0] : null;
     }
 
@@ -195,7 +195,7 @@ class DataObject
      */
     public static function whereLast($where, $params = [], $order = null)
     {
-        $result = self::where($where, $params, $order, '0,1');
+        $result = self::where($where, $params, $order, 1, 0);
         return count($result) > 0 ? end($result) : null;
     }
 
@@ -240,7 +240,7 @@ class DataObject
      */
     public static function findFirst($params, $order = null, $create = false)
     {
-        $result = self::find($params, $order, '0,1');
+        $result = self::find($params, $order, 1, 0);
         if (isset($result[0])) {
             return $result[0];
         }
