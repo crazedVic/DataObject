@@ -1,5 +1,9 @@
 <?php
 
+namespace ErwanG;
+
+use PDO;
+
 /**
  * Class DataObject
  * @package ErwanG
@@ -20,6 +24,7 @@ class DataObject
 {
     private static $_pdo;
     public $id;
+    protected static $_autoincrement=false;
 
     /**
      * DataObject constructor.
@@ -38,8 +43,11 @@ class DataObject
      */
     public static function get($id)
     {
-        $class   = get_called_class();
-        $query   = 'SELECT * FROM `' . $class::getTable() . '` WHERE id' . ' = ?';
+		if(null==$id){
+			return null;
+		}
+        $class = get_called_class();
+        $query = 'SELECT * FROM `' . $class::getTable() . '` WHERE id' . ' = ?';
         $objects = self::query($query, [$id]);
         return isset($objects[0]) ? $objects[0] : null;
     }
@@ -143,7 +151,7 @@ class DataObject
      */
     public static function getColumns()
     {
-        $table     = self::getTable();
+        $table = self::getTable();
         $statement = 'SHOW COLUMNS FROM `' . $table . '`';
         try {
             $q = self::_getPdo()->prepare($statement);
@@ -199,16 +207,16 @@ class DataObject
         return count($result) > 0 ? end($result) : null;
     }
 
-    private static function _createWhereFromParams($params, &$values)
+    private static function _createWhereFromParams($params,&$values)
     {
         $where = [];
-        $p     = [];
+        $p = [];
         foreach ($params as $k => $v) {
             if ($v === null) {
                 $where[] = '`' . $k . '` is null';
             } else {
                 $where[] = '`' . $k . '`=?';
-                $p[]     = $v;
+                $p[] = $v;
             }
         }
         $values = $p;
@@ -256,7 +264,7 @@ class DataObject
      * @param $order
      * @return DataObject|null
      */
-    public function findLast($params, $order = null)
+    public function findLast($params, $order=null)
     {
         $result = self::find($params, $order);
         return count($result) > 0 ? end($result) : null;
@@ -301,8 +309,8 @@ class DataObject
      */
     public static function create($params = [])
     {
-        $class      = get_called_class();
-        $object     = new $class();
+        $class = get_called_class();
+        $object = new $class();
         $object->id = null;
         foreach ($params as $key => $value) {
             if ($key != 'id' and substr($key, 0, 1) != '_') {
@@ -341,7 +349,7 @@ class DataObject
     public static function count($where = null, $params = null)
     {
         if (is_array($where)) {
-            $where = self::_createWhereFromParams($where, $params);
+            $where = self::_createWhereFromParams($where,$params);
         }
         if (null !== $where) {
             $where = ' WHERE ' . $where;
@@ -349,7 +357,7 @@ class DataObject
             $where = '';
         }
 
-        return (int) self::query(
+        return (int)self::query(
             'SELECT count(*) as nb FROM `' . self::getTable() . '`' . $where,
             $params
         )[0]->nb;
@@ -374,11 +382,18 @@ class DataObject
      * return an uniq id
      * @return bool|string
      */
-    public static function defineId($length = 8)
+    public static function defineId($length=8)
     {
-        do {
-            $id = substr(str_shuffle(str_repeat($x = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', ceil($length / strlen($x)))), 1, $length);
-        } while (null != self::get($id));
+
+        $class = get_called_class();
+        if($class::$_autoincrement) {
+            $status = self::query('SHOW TABLE STATUS WHERE name=?',[self::getTable()]);
+            $id = $status[0]->Auto_increment;
+        }else {
+            do {
+                $id = substr(str_shuffle(str_repeat($x = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', ceil($length / strlen($x)))), 1, $length);
+            } while (null != self::get($id));
+        }
         return $id;
     }
 
@@ -397,18 +412,14 @@ class DataObject
             throw new \Exception('Class does not exists : ' . $class);
         }
         if ($class::hasColumn(self::getTable() . '_id')) {
-            // error_log(self::getTable() . '_id');
-            // error_log($class::getTable());
-            // error_log($this->id);
             return $class::find([self::getTable() . '_id' => $this->id]);
             //}elseif($class::hasColumn(self::getTable() . '_id')){
-
         } elseif (class_exists($this->_getClassBetween($class, true))) {
             $classBetween = $this->_getClassBetween($class, true);
-            $items        = $classBetween::find([self::getTable() . '_id' => $this->id]);
-            $array        = [];
+            $items = $classBetween::find([self::getTable() . '_id' => $this->id]);
+            $array = [];
             foreach ($items as $item) {
-                $field   = $class::getTable() . '_id';
+                $field = $class::getTable() . '_id';
                 $array[] = $class::get($item->$field);
             }
             return $array;
@@ -457,14 +468,13 @@ class DataObject
     protected function _getClassBetween($class, $namespace = false)
     {
         $thisClass = $this->_getClass();
-        $nsp       = $this->_getNamespace();
-        $array     = [join('', array_slice(explode('\\', $class), -1)), join('', array_slice(explode('\\', $thisClass), -1))];
+        $nsp = $this->_getNamespace();
+        $array = [join('', array_slice(explode('\\', $class), -1)), join('', array_slice(explode('\\', $thisClass), -1))];
         sort($array);
         if ($namespace) {
-            //error_log($nsp . '\\' . implode('_', $array));
-            return $nsp . '\\' . implode('', $array);
+            return $nsp . '\\' . implode('_', $array);
         } else {
-            return implode('', $array);
+            return implode('_', $array);
         }
     }
 
@@ -498,22 +508,16 @@ class DataObject
          * create and execute query
          */
         if (!$this->isInDatabase()) {
-
-            $class = get_called_class();
-            $keys  = array_keys($vars);
-
-            if (!isset($class::$_autoId)) {
-                $keys[]   = 'id';
-                $this->id = self::defineId();
-                $vars[]   = $this->id;
-            }
+            $keys = array_keys($vars);
+            $keys[] = 'id';
             if ($transaction) {
                 self::beginTransaction();
             }
-
-            $query     = 'insert into `' . self::getTable() . '`(`' . implode('`, `', $keys) . '`) values (?' . str_repeat(', ?', sizeof($vars) - 1) . ')';
+            $this->id = self::defineId();
+            $vars[] = $this->id;
+            $query = 'insert into `' . self::getTable() . '`(`' . implode('`, `', $keys) . '`) values (?' . str_repeat(', ?', sizeof($vars) - 1) . ')';
             $statement = self::_prepare($query);
-            $result    = $statement->execute(array_values($vars));
+            $result = $statement->execute(array_values($vars));
             if ($transaction) {
                 self::commit();
             }
@@ -527,9 +531,9 @@ class DataObject
         } else {
             $query = 'update `' . self::getTable() . '` set `' . implode('` = ?, `', array_keys($vars)) . '` = ? '
                 . 'where `id` = ?';
-            $statement  = self::_prepare($query);
+            $statement = self::_prepare($query);
             $vars['id'] = $this->id;
-            $result     = $statement->execute(array_values($vars));
+            $result = $statement->execute(array_values($vars));
             if (!$result) {
                 throw new \Exception($statement->errorInfo()[2]);
             }
@@ -547,10 +551,10 @@ class DataObject
                     $item->delete();
                 }
                 foreach ($value as $v) {
-                    $item          = new $classBetween();
-                    $field1        = $this->getTable();
+                    $item = new $classBetween();
+                    $field1 = $this->getTable();
                     $item->$field1 = $this;
-                    $field2        = $key;
+                    $field2 = $key;
                     $item->$field2 = $v;
                     $item->store();
                 }
@@ -566,23 +570,25 @@ class DataObject
      */
     public function delete()
     {
-        $keys   = [];
+        $keys = [];
         $params = [];
         if (empty($this->id)) {
             foreach ($this as $k => $v) {
                 if (null != $v) {
-                    $keys[]   = $k;
+                    $keys[] = $k;
                     $params[] = $v;
                 }
             }
         } else {
-            $keys     = ['id'];
+            $keys = ['id'];
             $params[] = $this->id;
         }
-        $stmt   = self::_prepare('DELETE FROM `' . self::getTable() . '` WHERE `' . implode('` = ? AND `', $keys) . '` = ?');
+        $stmt = self::_prepare('DELETE FROM `' . self::getTable() . '` WHERE `' . implode('` = ? AND `', $keys) . '` = ?');
         $result = $stmt->execute($params);
+        //var_dump('DELETE FROM `' . self::getTable() . '` WHERE `' . implode('` = ? AND `', $keys) . '` = ?');
         return $result;
     }
+
 
     /**
      * return true if table exists
@@ -634,7 +640,7 @@ class DataObject
      * @param bool $foreignKeyCheck
      * @return bool
      */
-    public function truncate($foreignKeyCheck = false)
+    public static function truncate($foreignKeyCheck = false)
     {
         if (!$foreignKeyCheck) {
             self::_getPDO()->exec('SET FOREIGN_KEY_CHECKS = 0;');
@@ -656,17 +662,18 @@ class DataObject
         $columns = self::getColumns();
         foreach ($columns as $column) {
             if (isset($params[$column['Field']])) {
-                $c        = $column['Field'];
+                $c = $column['Field'];
                 $this->$c = $params[$column['Field']];
             }
         }
         return $this;
     }
 
+
     public function fromJson($json)
     {
-        $object  = json_decode($json);
-        $vars    = get_object_vars($object);
+        $object = json_decode($json);
+        $vars = get_object_vars($object);
         $columns = self::getColumns();
         foreach ($columns as $column) {
             $field = $column['Field'];
@@ -700,7 +707,7 @@ class DataObject
     public function copy()
     {
         $class = $this->_getClass();
-        $vars  = get_object_vars($this);
+        $vars = get_object_vars($this);
         unset($vars['id']);
         return $class::create($vars);
     }
